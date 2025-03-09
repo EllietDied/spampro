@@ -84,10 +84,10 @@ async def send_messages_to_groups(client):
         ignored_ids = [g["id"] for g in ignored]
         group_ids = []
         async for dialog in client.iter_dialogs():
-            if dialog.is_group and dialog.name != 'spam bot' and dialog.id not in ignored_ids:
+            if dialog.is_group and dialog.name != 'mis spams' and dialog.id not in ignored_ids:
                 group_ids.append(dialog.id)
         async for dialog in client.iter_dialogs():
-            if dialog.is_group and dialog.name == 'spam bot':
+            if dialog.is_group and dialog.name == 'mis spams':
                 async for message in client.iter_messages(dialog, limit=10):
                     if message.text:
                         for group_id in group_ids:
