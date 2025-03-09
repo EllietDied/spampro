@@ -1,8 +1,11 @@
 import asyncio
-import os, sys, json
+import os, sys, json, datetime
 from pystyle import *
 from telethon.sync import TelegramClient
 from telethon import events
+
+# Diccionario para llevar el control de respuestas automáticas por usuario (una vez al día)
+last_auto_reply = {}  # clave: user id, valor: fecha (datetime.date)
 
 def cls():
     os.system("cls")
@@ -61,21 +64,42 @@ async def unignore_group_handler(event):
             save_ignored_groups(new_ignored)
             await event.reply(f"Grupo '{group_name}' ha sido removido de la lista de ignorados.")
 
-# Manejador para respuestas automáticas a mensajes reenviados
+# Manejador para respuestas automáticas a mensajes en grupo
+# Se responde únicamente si:
+#  • El mensaje es en grupo y es una respuesta.
+#  • El remitente no es un bot.
+#  • El mensaje respondido fue enviado por "mí" (el propietario del bot).
+#  • Solo se envía una vez al día por cada usuario.
 async def auto_reply_handler(event):
-    if event.is_group and event.is_reply:
-        try:
-            replied_message = await event.get_reply_message()
-            # Opcional: verificar que el mensaje respondido sea un mensaje reenviado
-            if replied_message.fwd_from:
-                saludo = "¡Hola! Te reenvío el mensaje. ¿Estás interesado?"
-                # Envía un mensaje privado al usuario
-                await event.client.send_message(event.sender_id, saludo)
-                # Reenvía el mismo mensaje al usuario en privado
-                await event.client.forward_messages(event.sender_id, replied_message)
-                Write.Print(f"Respondido automáticamente a {event.sender_id}", Colors.blue, interval=0)
-        except Exception as e:
-            Write.Print(f"Error en auto_reply_handler: {str(e)}", Colors.red, interval=0)
+    if not event.is_group or not event.is_reply:
+        return
+    try:
+        sender = await event.get_sender()
+        # Ignorar si el remitente es un bot
+        if sender.bot:
+            return
+
+        replied_message = await event.get_reply_message()
+        # Verificar que el mensaje respondido sea uno de "mis mensajes"
+        me = await event.client.get_me()
+        if replied_message.sender_id != me.id:
+            return
+
+        # Comprobar si ya se respondió a este usuario hoy
+        current_date = datetime.datetime.now().date()
+        if sender.id in last_auto_reply and last_auto_reply[sender.id] == current_date:
+            return
+
+        # Registrar que se respondió hoy a este usuario
+        last_auto_reply[sender.id] = current_date
+
+        saludo = "¡Hola! Te reenvío el mensaje. ¿Estás interesado?"
+        # Enviar mensaje privado y reenviar el mensaje respondido
+        await event.client.send_message(sender.id, saludo)
+        await event.client.forward_messages(sender.id, replied_message)
+        Write.Print(f"Respondido automáticamente a {sender.id}", Colors.blue, interval=0)
+    except Exception as e:
+        Write.Print(f"Error en auto_reply_handler: {str(e)}", Colors.red, interval=0)
 
 # Función de spam modificada para excluir grupos ignorados
 async def send_messages_to_groups(client):
@@ -162,7 +186,7 @@ async def main():
             client.add_event_handler(ignore_group_handler, events.NewMessage(pattern='/ignorargrupo'))
             client.add_event_handler(list_ignored_handler, events.NewMessage(pattern='/verignorados'))
             client.add_event_handler(unignore_group_handler, events.NewMessage(pattern='/quitarignorargrupo'))
-            # Registrar manejador para respuestas automáticas a mensajes reenviados
+            # Registrar manejador para respuestas automáticas a mensajes en grupo
             client.add_event_handler(auto_reply_handler, events.NewMessage(func=lambda e: e.is_reply and e.is_group))
             
             Write.Print(f"Cuenta {acc['session']} iniciada.", Colors.green, interval=0)
